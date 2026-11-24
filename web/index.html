@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+  <meta name="theme-color" content="#07131d">
+  <title>Realm Eternal</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <canvas id="game" aria-label="Realm Eternal game canvas"></canvas>
+  <section id="loading">
+    <strong>REALM ETERNAL</strong>
+    <span>Awakening the realm…</span>
+  </section>
+  <script type="module">
+    import init from '/pkg/realm_client.js';
+    try {
+      await init();
+      document.getElementById('loading').remove();
+    } catch (error) {
+      const loading = document.getElementById('loading');
+      loading.innerHTML = '<strong>BUILD REQUIRED</strong><span>Run the WASM build commands from README.md.</span>';
+      console.error(error);
+    }
+  </script>
+</body>
+</html>

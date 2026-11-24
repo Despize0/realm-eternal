@@ -1,0 +1,14 @@
+[package]
+name = "realm-server"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+realm-shared = { path = "../shared" }
+axum = { version = "0.7", features = ["ws"] }
+futures-util = "0.3"
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tower-http = { version = "0.6", features = ["fs", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
