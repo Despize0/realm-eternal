@@ -185,7 +185,7 @@ fn update(g: &mut Game, dt: f32) {
     while g.acc >= TICK {
         g.acc -= TICK;
         let input = Input {
-            mv: Vec2::new(x, y), aim,
+            mv: Camera::from_view(Vec2::new(x, y)), aim,
             light: first && g.pressed.light, heavy: first && g.pressed.heavy, dodge: first && g.pressed.dodge,
             jump: first && g.pressed.jump, jump_held: held(g, &[" "]), flask: first && g.pressed.flask, rest: first && g.pressed.rest,
         };
@@ -264,9 +264,9 @@ fn render(g: &Game) {
     // Depth-sorted actors, pillars and braziers.
     enum Item<'a> { Actor(&'a Actor), Pillar(Vec2), Brazier(Vec2) }
     let mut items: Vec<(f32, Item)> = Vec::new();
-    for a in &g.sim.actors { items.push((a.pos.y, Item::Actor(a))); }
-    for &p in PILLARS.iter().chain(BELFRY_PILLARS.iter()) { items.push((p.y, Item::Pillar(p))); }
-    for &b in braziers().iter() { items.push((b.y, Item::Brazier(b))); }
+    for a in &g.sim.actors { items.push((Camera::depth(a.pos), Item::Actor(a))); }
+    for &p in PILLARS.iter().chain(BELFRY_PILLARS.iter()) { items.push((Camera::depth(p), Item::Pillar(p))); }
+    for &b in braziers().iter() { items.push((Camera::depth(b), Item::Brazier(b))); }
     items.sort_by(|a, b| a.0.total_cmp(&b.0));
     for (_, it) in &items {
         match it {
@@ -352,8 +352,7 @@ fn draw_floor(g: &Game, cm: &Camera) {
     for (a, b) in rear {
         draw_wall_face(g, cm, Vec2::new(a, NAVE_MIN.y), Vec2::new(b, NAVE_MIN.y), wall_h, "#3a3b3d");
     }
-    draw_wall_face(g, cm, Vec2::new(NAVE_MIN.x, NAVE_MIN.y), Vec2::new(NAVE_MIN.x, NAVE_MAX.y), wall_h, "#2e2f31");
-    draw_wall_face(g, cm, Vec2::new(NAVE_MAX.x, NAVE_MIN.y), Vec2::new(NAVE_MAX.x, NAVE_MAX.y), wall_h, "#2e2f31");
+    draw_wall_face(g, cm, Vec2::new(NAVE_MIN.x, NAVE_MAX.y), Vec2::new(NAVE_MIN.x, NAVE_MIN.y), wall_h, "#2e2f31");
     // Portcullis.
     if !g.sim.gate_open {
         c.set_stroke_style_str("#6b5a44");
@@ -372,7 +371,7 @@ fn draw_floor(g: &Game, cm: &Camera) {
         let a1 = (i as f32 + 1.5) / 8.0 * std::f32::consts::TAU;
         let p0 = BELFRY_CENTER + Vec2::new(a0.cos(), a0.sin()) * (BELFRY_R + 0.4);
         let p1 = BELFRY_CENTER + Vec2::new(a1.cos(), a1.sin()) * (BELFRY_R + 0.4);
-        if (p0.y + p1.y) * 0.5 < BELFRY_CENTER.y { draw_wall_face(g, cm, p0, p1, 2.0, "#34302d"); }
+        if Camera::depth((p0 + p1) * 0.5) < Camera::depth(BELFRY_CENTER) - 1.0 { draw_wall_face(g, cm, p0, p1, 2.0, "#34302d"); }
     }
     // Mist wall at the belfry threshold.
     if g.sim.mist {
@@ -424,13 +423,29 @@ fn draw_wall_face(g: &Game, cm: &Camera, a: Vec2, b: Vec2, h: f32, color: &str) 
 }
 
 fn draw_front_wall(g: &Game, cm: &Camera) {
-    // Low, broken foreground wall so it never hides a fighter.
+    // The two near walls are low and broken so they never hide a fighter.
+    let heights = [0.35f32, 0.6, 0.25, 0.5, 0.4];
     let mut x = NAVE_MIN.x;
     let mut k = 0;
     while x < NAVE_MAX.x {
-        let h = [0.35f32, 0.6, 0.25, 0.5, 0.4][k % 5];
-        draw_wall_face(g, cm, Vec2::new(x, NAVE_MAX.y), Vec2::new((x + 2.2).min(NAVE_MAX.x), NAVE_MAX.y), h, "#2a2b2d");
+        draw_wall_face(g, cm, Vec2::new(x, NAVE_MAX.y), Vec2::new((x + 2.2).min(NAVE_MAX.x), NAVE_MAX.y), heights[k % 5], "#2a2b2d");
         x += 2.2; k += 1;
+    }
+    let mut y = NAVE_MIN.y;
+    while y < NAVE_MAX.y {
+        draw_wall_face(g, cm, Vec2::new(NAVE_MAX.x, y), Vec2::new(NAVE_MAX.x, (y + 2.2).min(NAVE_MAX.y)), heights[k % 5], "#26272a");
+        y += 2.2; k += 1;
+    }
+    // Belfry rim, near half.
+    for i in 0..8 {
+        let a0 = (i as f32 + 0.5) / 8.0 * std::f32::consts::TAU;
+        let a1 = (i as f32 + 1.5) / 8.0 * std::f32::consts::TAU;
+        let p0 = BELFRY_CENTER + Vec2::new(a0.cos(), a0.sin()) * (BELFRY_R + 0.4);
+        let p1 = BELFRY_CENTER + Vec2::new(a1.cos(), a1.sin()) * (BELFRY_R + 0.4);
+        if Camera::depth((p0 + p1) * 0.5) > Camera::depth(BELFRY_CENTER) + 1.0 {
+            let mid = (p0 + p1) * 0.5;
+            if mid.distance(Vec2::new(0.0, CORRIDOR_END_Y)) > 2.5 { draw_wall_face(g, cm, p0, p1, 0.45, "#2b2725"); }
+        }
     }
 }
 
@@ -538,6 +553,7 @@ fn draw_actor(g: &Game, cm: &Camera, a: &Actor) {
     let (base, accent) = kind_colors(a.kind);
     let lean = if a.state == State::Stagger { 0.25 * (a.t * 20.0).sin() as f64 } else { 0.0 };
     let face = a.facing;
+    let vface = Camera::to_view(face);
 
     c.save();
     c.translate(bx, by).ok();
@@ -545,7 +561,7 @@ fn draw_actor(g: &Game, cm: &Camera, a: &Actor) {
     // Cape / robe behind the body when facing away.
     if a.kind == Kind::Knight || a.kind == Kind::Cultist || a.kind == Kind::Bellwarden {
         c.set_fill_style_str(accent);
-        let cape_side = -face.x as f64 * half_w * 0.4;
+        let cape_side = -vface.x as f64 * half_w * 0.4;
         c.fill_rect(-half_w * 0.9 + cape_side, -body_h * 0.82, half_w * 1.8, body_h * 0.72);
     }
     // Legs and torso.
@@ -566,7 +582,7 @@ fn draw_actor(g: &Game, cm: &Camera, a: &Actor) {
         c.fill();
     }
     // Eyes: ember for the dead, visor slit for the knight.
-    if face.y > -0.3 {
+    if vface.y > -0.3 {
         let ey = -body_h * 0.82 - head_r * 0.75;
         if a.kind == Kind::Knight {
             c.set_fill_style_str("#111"); c.fill_rect(-head_r * 0.7, ey - 1.5, head_r * 1.4, 3.0);

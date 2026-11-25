@@ -5,9 +5,12 @@ use std::ops::{Add, AddAssign, Mul, Sub};
 
 pub const PROTOCOL_VERSION: u16 = 1;
 pub const TICK_HZ: f32 = 30.0;
-pub const CAMERA_Y_SCALE: f32 = 0.72;
-pub const CAMERA_HEIGHT_SCALE: f32 = 0.95;
-pub const PLAYER_ANCHOR_Y: f32 = 0.62;
+/// Angled isometric camera: the world is turned 45 degrees around and viewed
+/// about 32 degrees down, so the floor is squashed and heights stand up.
+pub const CAMERA_YAW_COS: f32 = std::f32::consts::FRAC_1_SQRT_2;
+pub const CAMERA_Y_SCALE: f32 = 0.56;
+pub const CAMERA_HEIGHT_SCALE: f32 = 0.85;
+pub const PLAYER_ANCHOR_Y: f32 = 0.58;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Vec2 {
@@ -54,20 +57,28 @@ impl Camera {
     pub fn anchor(self) -> Vec2 {
         Vec2::new(self.viewport.x * 0.5, self.viewport.y * PLAYER_ANCHOR_Y)
     }
+    /// World offset -> camera-aligned axes (x across the screen, y into it).
+    pub fn to_view(d: Vec2) -> Vec2 {
+        Vec2::new((d.x - d.y) * CAMERA_YAW_COS, (d.x + d.y) * CAMERA_YAW_COS)
+    }
+    /// Camera-aligned direction -> world direction (inverse of `to_view`).
+    pub fn from_view(v: Vec2) -> Vec2 {
+        Vec2::new((v.x + v.y) * CAMERA_YAW_COS, (v.y - v.x) * CAMERA_YAW_COS)
+    }
+    /// Depth key for painter's sorting: larger is nearer the camera.
+    pub fn depth(world: Vec2) -> f32 { world.x + world.y }
     pub fn project(self, world: Vec2, height: f32) -> Vec2 {
         let a = self.anchor();
+        let v = Self::to_view(world - self.position);
         Vec2::new(
-            (world.x - self.position.x) * self.zoom + a.x,
-            (world.y - self.position.y) * self.zoom * CAMERA_Y_SCALE + a.y
-                - height * self.zoom * CAMERA_HEIGHT_SCALE,
+            v.x * self.zoom + a.x,
+            v.y * self.zoom * CAMERA_Y_SCALE + a.y - height * self.zoom * CAMERA_HEIGHT_SCALE,
         )
     }
     pub fn unproject_ground(self, screen: Vec2) -> Vec2 {
         let a = self.anchor();
-        Vec2::new(
-            self.position.x + (screen.x - a.x) / self.zoom,
-            self.position.y + (screen.y - a.y) / (self.zoom * CAMERA_Y_SCALE),
-        )
+        let v = Vec2::new((screen.x - a.x) / self.zoom, (screen.y - a.y) / (self.zoom * CAMERA_Y_SCALE));
+        self.position + Self::from_view(v)
     }
 }
 
@@ -115,6 +126,18 @@ mod tests {
         let back = camera.unproject_ground(camera.project(point, 0.0));
         assert!((point.x - back.x).abs() < 0.001);
         assert!((point.y - back.y).abs() < 0.001);
+    }
+
+    #[test]
+    fn screen_up_is_camera_relative() {
+        // W (screen up) must move the knight straight up the screen.
+        let cam = Camera { position: Vec2::ZERO, zoom: 1.0, viewport: Vec2::new(800.0, 600.0) };
+        let w = Camera::from_view(Vec2::new(0.0, -1.0));
+        let a = cam.project(Vec2::ZERO, 0.0);
+        let b = cam.project(w * 10.0, 0.0);
+        assert!((a.x - b.x).abs() < 0.001 && b.y < a.y);
+        let v = Camera::to_view(Camera::from_view(Vec2::new(0.3, -0.8)));
+        assert!((v.x - 0.3).abs() < 1e-5 && (v.y + 0.8).abs() < 1e-5);
     }
 
     #[test]
