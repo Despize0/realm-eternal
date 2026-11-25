@@ -19,5 +19,5 @@ features = [
   "Window", "Document", "Element", "HtmlCanvasElement",
   "CanvasRenderingContext2d", "KeyboardEvent", "MouseEvent",
   "WheelEvent", "EventTarget", "Performance", "WebSocket",
-  "MessageEvent", "BinaryType", "console", "CssStyleDeclaration", "DomRect"
+  "MessageEvent", "BinaryType", "console", "CssStyleDeclaration", "DomRect", "CanvasGradient"
 ]

@@ -1,3 +1,5 @@
+pub mod combat;
+
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, AddAssign, Mul, Sub};
 

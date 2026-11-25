@@ -2,19 +2,22 @@
 
 An original Rust/WASM multiplayer bullet-hell MMORPG vertical slice.
 
-## Included
+## Gameplay: the Ashen Vigil encounter
 
-- Asymmetric three-quarter affine camera with the player below center
-- WASD movement, mouse aiming, click/Space firing, wheel zoom
-- Procedural pixel-art rendering with world-space projectile simulation
-- Enemy waves, ranged enemies, boss phases, loot, XP, levels, HP and mana
-- Rust authoritative WebSocket server protocol and movement validation
-- Docker and Railway deployment configuration
-- Unit tests for projection and movement validation
+Realm Eternal's combat is ported from the Ashen Vigil prototype (Godot 4.7) into Rust.
+The rules live in `shared/src/combat.rs` and run at a fixed 60 Hz tick in the browser.
 
-This is a playable foundation, not a completed production MMORPG. The full requested
-content scope requires iterative development, authored art/audio, persistence, security
-hardening, load testing, and balancing.
+- **Knight:** 100 HP, 100 stamina (regenerates 25/s, 0.7 s after the last spend, only while free or airborne), 20 poise.
+- **Vigil Longsword:** Vigil Cut (light, 20 stamina, 18 dmg) and Ashfall Cleave (heavy, 35 stamina, 34 dmg).
+- **Dodge roll:** 25 stamina, 0.40 s, i-frames 0.06-0.24 s. With no direction it is a backstep.
+- **Jump:** hold for full height. Feet above 0.9 m clear every `LOW` attack.
+- **Ember Flasks:** 3, heal 45 at 0.6 s into a 1.0 s drink. Clearing a wave gives one back.
+- **The nave:** three waves (Husks, Duelists, Cultists, a Pyreguard). Dying restarts the current wave.
+- **The belfry:** the gate opens after wave 3. Crossing in raises the mist and the Bellwarden (420 HP) drops in.
+  Dying there resets only the boss. Phase 2 at half health opens with Grave Toll and swaps in new combos.
+- **Vigil Altar:** rest with E. You cannot rest while the Bellwarden lives; resting after it falls resets the cathedral.
+- **Fair telegraphs:** every enemy attack shows a tell word, a floor footprint or projectile lane, and a wind-up.
+  Bellwarden combos end on 0.9 s+ recovery, wind up 0.6 s+, and come from a shuffled bag (see `validate_combos`).
 
 ## Local build
 
@@ -48,15 +51,15 @@ The server reads `PORT` and serves both the site and `/ws` from one origin.
 
 ## Controls
 
-- WASD or arrow keys: move
-- Mouse: aim
-- Left click or Space: fire
-- Mouse wheel: zoom
-- R: restart after death
+- WASD / arrows: move · Mouse: aim
+- Left click / J: light attack · Right click / K: heavy attack
+- Shift: dodge roll · Space: jump (hold for height)
+- Q: drink an Ember Flask · E: rest at the Vigil Altar
+- Mouse wheel: zoom · H: toggle help · F5: restart the whole encounter
 
 ## Architecture
 
-- `shared`: projection, protocol and simulation types shared by native and WASM
+- `shared`: projection, protocol, and the combat simulation (`combat.rs`) shared by native and WASM
 - `server`: Axum static server and authoritative WebSocket world
 - `client`: Rust/WASM Canvas2D renderer and playable local simulation
 - `web`: browser shell and generated WASM destination
