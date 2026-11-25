@@ -355,7 +355,7 @@ pub struct Portal {
     pub instance: Option<u64>,
 }
 
-pub const PORTAL_REACH: f32 = 1.4;
+pub const PORTAL_REACH: f32 = 2.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Transfer { Nexus, Realm, Portal(u32), /** The character fell: permadeath. */ Died }
@@ -565,7 +565,7 @@ impl Instance {
         self.actors.push(a);
         self.players.insert(uid, PlayerInfo { name: name.to_string(), level, xp, input: Input::default(), buffer: None, dead_t: 0.0, turn_gap: 0.0 });
         let welcome = match self.kind {
-            WorldKind::Concourse => "THE NEXUS".to_string(),
+            WorldKind::Concourse => "THE ETERNAL CONCOURSE".to_string(),
             WorldKind::Realm => "THE ASHEN REALM".to_string(),
             WorldKind::Cathedral => "THE CATHEDRAL OF THE VIGIL".to_string(),
         };
