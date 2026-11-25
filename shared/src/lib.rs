@@ -1,16 +1,18 @@
 pub mod combat;
+pub mod world;
 
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, AddAssign, Mul, Sub};
 
-pub const PROTOCOL_VERSION: u16 = 1;
-pub const TICK_HZ: f32 = 30.0;
-/// Angled isometric camera: the world is turned 45 degrees around and viewed
-/// about 32 degrees down, so the floor is squashed and heights stand up.
-pub const CAMERA_YAW_COS: f32 = std::f32::consts::FRAC_1_SQRT_2;
-pub const CAMERA_Y_SCALE: f32 = 0.56;
-pub const CAMERA_HEIGHT_SCALE: f32 = 0.85;
-pub const PLAYER_ANCHOR_Y: f32 = 0.58;
+pub const PROTOCOL_VERSION: u16 = 2;
+pub const TICK_HZ: f32 = 60.0;
+pub const SNAPSHOT_HZ: f32 = 30.0;
+/// Asymmetric three-quarter view: an affine oblique projection. World x maps to screen x,
+/// world y is foreshortened, and height rises straight up the screen. The camera never rotates.
+pub const CAMERA_Y_SCALE: f32 = 0.72;
+pub const CAMERA_HEIGHT_SCALE: f32 = 0.95;
+/// The player sits below screen centre; the client also leads the camera toward the aim.
+pub const PLAYER_ANCHOR_Y: f32 = 0.62;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Vec2 {
@@ -57,16 +59,13 @@ impl Camera {
     pub fn anchor(self) -> Vec2 {
         Vec2::new(self.viewport.x * 0.5, self.viewport.y * PLAYER_ANCHOR_Y)
     }
-    /// World offset -> camera-aligned axes (x across the screen, y into it).
-    pub fn to_view(d: Vec2) -> Vec2 {
-        Vec2::new((d.x - d.y) * CAMERA_YAW_COS, (d.x + d.y) * CAMERA_YAW_COS)
-    }
-    /// Camera-aligned direction -> world direction (inverse of `to_view`).
-    pub fn from_view(v: Vec2) -> Vec2 {
-        Vec2::new((v.x + v.y) * CAMERA_YAW_COS, (v.y - v.x) * CAMERA_YAW_COS)
-    }
-    /// Depth key for painter's sorting: larger is nearer the camera.
-    pub fn depth(world: Vec2) -> f32 { world.x + world.y }
+    /// World offset -> camera-aligned axes. The oblique camera is axis-aligned, so this is the identity;
+    /// it is kept so screen-relative input and facing go through one place.
+    pub fn to_view(d: Vec2) -> Vec2 { d }
+    /// Camera-aligned direction -> world direction.
+    pub fn from_view(v: Vec2) -> Vec2 { v }
+    /// Depth key for painter's sorting: larger is nearer the camera (lower on screen).
+    pub fn depth(world: Vec2) -> f32 { world.y }
     pub fn project(self, world: Vec2, height: f32) -> Vec2 {
         let a = self.anchor();
         let v = Self::to_view(world - self.position);
@@ -82,27 +81,93 @@ impl Camera {
     }
 }
 
+pub const BTN_LIGHT: u16 = 1;
+pub const BTN_HEAVY: u16 = 2;
+pub const BTN_DODGE: u16 = 4;
+pub const BTN_JUMP: u16 = 8;
+pub const BTN_JUMP_HELD: u16 = 16;
+pub const BTN_FLASK: u16 = 32;
+pub const BTN_INTERACT: u16 = 64;
+pub const BTN_HUB: u16 = 128;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ClientMessage {
     Hello { version: u16, name: String },
-    Input { sequence: u32, dx: f32, dy: f32, aim_x: f32, aim_y: f32, firing: bool },
+    /// Movement and aim in world metres; `b` holds button bits (presses since the last input).
+    Input { seq: u32, mx: f32, my: f32, ax: f32, ay: f32, b: u16 },
     Ping { client_ms: f64 },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PlayerSnapshot {
-    pub id: u64,
-    pub name: String,
-    pub position: Vec2,
-    pub hp: u16,
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ActorNet {
+    pub u: u32,
+    pub k: u8,
+    pub x: f32, pub y: f32, pub z: f32,
+    pub fx: f32, pub fy: f32,
+    pub vx: f32, pub vy: f32,
+    pub hp: f32, pub mhp: f32, pub ch: f32,
+    pub po: f32,
+    pub s: u8,
+    pub t: f32,
+    /// Attack index into `combat::ALL_ATTACKS`, or -1.
+    pub a: i16,
+    pub ax: f32, pub ay: f32,
+    pub r: f32, pub d: f32,
+    pub fl: bool,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub n: Option<String>,
+    pub lv: u8,
+    pub band: u8,
 }
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ProjNet { pub i: u32, pub l: u8, pub x: f32, pub y: f32, pub z: f32, pub dx: f32, pub dy: f32 }
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct PortalNet { pub i: u32, pub x: f32, pub y: f32, pub to: u8, pub ttl: f32 }
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct MeNet { pub uid: u32, pub name: String, pub stamina: f32, pub flasks: u8, pub level: u32, pub xp: u32, pub next: u32 }
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "e", rename_all = "snake_case")]
+pub enum EventNet {
+    Dmg { x: f32, y: f32, z: f32, v: i32, p: bool },
+    Hurt,
+    Msg { text: String, secs: f32 },
+    Shake { a: f32 },
+    Stagger { x: f32, y: f32 },
+    Level { lv: u32 },
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Snapshot {
+    pub tick: u64,
+    pub me: MeNet,
+    pub actors: Vec<ActorNet>,
+    pub projs: Vec<ProjNet>,
+    pub portals: Vec<PortalNet>,
+    pub events: Vec<EventNet>,
+    pub stage: String,
+    pub gate: bool,
+    pub mist: bool,
+    pub phase2: bool,
+    pub online: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FallenNet { pub name: String, pub level: u32, pub place: String }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerMessage {
-    Welcome { id: u64, tick_hz: f32 },
-    Snapshot { tick: u64, acknowledged: u32, players: Vec<PlayerSnapshot> },
+    Welcome { id: u32, tick_hz: f32 },
+    Enter { world: world::WorldKind, seed: u32, instance: u64 },
+    Snap(Snapshot),
+    /// Permadeath: the character is gone and has been laid in the memorial hall.
+    Died { name: String, level: u32, place: String },
+    Memorial { fallen: Vec<FallenNet> },
     Pong { client_ms: f64 },
     Error { message: String },
 }

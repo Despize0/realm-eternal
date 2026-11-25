@@ -1,5 +1,15 @@
 # Realm Eternal
 
+A cooperative dark-fantasy MMORPG. Rust authoritative server, Rust/WASM client.
+
+## World
+
+- **Eternal Concourse:** the safe hub. The server blocks all damage there. It has the realm portal, a fountain, and the Memorial Hall listing fallen characters.
+- **The Ashen Realm:** one shared open world (320 × 320 m island) generated from a seed on both server and client. Bands run from the Shore through the Lowlands, Midlands and Highlands to the Godlands at the centre, and foes get tougher further in. Experience is shared with every player nearby, up to level 20.
+- **Cathedral of the Vigil:** realm foes sometimes drop a portal into a shared dungeon instance (up to 6 players) holding the Ashen Vigil encounter and the Bellwarden.
+- **Permadeath:** dying outside the Concourse ends the character. Its name goes into the Memorial Hall and the player returns as a level-1 recruit.
+- **Networking:** the server simulates every world at 60 Hz and sends each client an interest-managed snapshot (22 m radius) at 30 Hz. The client predicts only its own walking.
+
 An original Rust/WASM multiplayer bullet-hell MMORPG vertical slice.
 
 ## Gameplay: the Ashen Vigil encounter

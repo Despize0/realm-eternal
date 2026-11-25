@@ -3,26 +3,38 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
-  <meta name="theme-color" content="#07131d">
+  <meta name="theme-color" content="#07080b">
   <title>Realm Eternal</title>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <canvas id="game" aria-label="Realm Eternal game canvas"></canvas>
-  <section id="loading">
+  <section id="title">
     <strong>REALM ETERNAL</strong>
-    <span>Awakening the realm…</span>
+    <span class="tag">A cooperative dark-fantasy realm. Death is permanent.</span>
+    <form id="join">
+      <input id="name" maxlength="16" placeholder="Name your warrior" autocomplete="off" required>
+      <button type="submit">Enter the Concourse</button>
+    </form>
+    <span id="status" class="hint">Loading…</span>
   </section>
   <script type="module">
-    import init from '/pkg/realm_client.js';
-    try {
-      await init();
-      document.getElementById('loading').remove();
-    } catch (error) {
-      const loading = document.getElementById('loading');
-      loading.innerHTML = '<strong>BUILD REQUIRED</strong><span>Run the WASM build commands from README.md.</span>';
-      console.error(error);
-    }
+    import init, { play } from '/pkg/realm_client.js';
+    const status = document.getElementById('status');
+    const input = document.getElementById('name');
+    input.value = localStorage.getItem('realm-name') || '';
+    let ready = false;
+    try { await init(); ready = true; status.textContent = 'WASD move · mouse aim · click to strike'; }
+    catch (e) { status.textContent = 'The game failed to load — refresh to try again.'; console.error(e); }
+    document.getElementById('join').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      if (!ready) return;
+      const name = input.value.trim() || 'Wanderer';
+      try { localStorage.setItem('realm-name', name); } catch (_) {}
+      document.getElementById('title').remove();
+      play(name);
+    });
+    input.focus();
   </script>
 </body>
 </html>
